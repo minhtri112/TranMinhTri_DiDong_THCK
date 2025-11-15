@@ -1,5 +1,5 @@
 import { Picker } from "@react-native-picker/picker";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -21,6 +21,9 @@ import {
 
 export default function Index() {
   const [books, setBooks] = useState([]);
+
+  const [searchText, setSearchText] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
 
   // Modal Add
   const [addModalVisible, setAddModalVisible] = useState(false);
@@ -127,6 +130,18 @@ export default function Index() {
     await loadBooks();
   };
 
+
+  const filteredBooks = useMemo(() => {
+    return books.filter((book) => {
+      const matchSearch = book.title.toLowerCase().includes(searchText.toLowerCase());
+
+      const matchStatus =
+        statusFilter === "all" ? true : book.status === statusFilter;
+
+      return matchSearch && matchStatus;
+    });
+  }, [books, searchText, statusFilter]);
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -141,9 +156,41 @@ export default function Index() {
         </TouchableOpacity>
       </View>
 
+
+      {/* Search box */}
+      <TextInput
+        placeholder="Tìm kiếm theo tiêu đề..."
+        value={searchText}
+        onChangeText={setSearchText}
+        style={styles.searchInput}
+      />
+
+      {/* Filter tabs */}
+      <View style={styles.filterRow}>
+        {["all", "planning", "reading", "done"].map((s) => (
+          <TouchableOpacity
+            key={s}
+            onPress={() => setStatusFilter(s)}
+            style={[
+              styles.filterBtn,
+              statusFilter === s ? styles.filterBtnActive : null,
+            ]}
+          >
+            <Text
+              style={[
+                styles.filterText,
+                statusFilter === s ? styles.filterTextActive : null,
+              ]}
+            >
+              {s.toUpperCase()}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       {/* FlatList */}
       <FlatList
-        data={books}
+        data={filteredBooks}
         keyExtractor={(item) => item.id.toString()}
         renderItem={({ item }) => (
           <TouchableOpacity
@@ -332,10 +379,10 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
   deleteBtn: {
-  color: "#d32f2f",
-  fontWeight: "700",
-  fontSize: 16,
-},
+    color: "#d32f2f",
+    fontWeight: "700",
+    fontSize: 16,
+  },
   error: { color: "red", marginBottom: 10 },
   modalButtons: { flexDirection: "row", justifyContent: "space-between", marginTop: 20 },
   btn: {
@@ -345,4 +392,40 @@ const styles = StyleSheet.create({
     marginHorizontal: 5,
   },
   btnText: { color: "#fff", textAlign: "center", fontWeight: "600" },
+
+
+  searchInput: {
+  backgroundColor: "#f1f1f1",
+  padding: 12,
+  borderRadius: 8,
+  marginBottom: 10,
+},
+
+filterRow: {
+  flexDirection: "row",
+  justifyContent: "space-between",
+  marginBottom: 12,
+},
+
+filterBtn: {
+  paddingVertical: 6,
+  paddingHorizontal: 10,
+  borderRadius: 6,
+  backgroundColor: "#e0e0e0",
+},
+
+filterBtnActive: {
+  backgroundColor: "#2196f3",
+},
+
+filterText: {
+  color: "#333",
+  fontWeight: "600",
+  fontSize: 12,
+},
+
+filterTextActive: {
+  color: "#fff",
+},
+
 });
