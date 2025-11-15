@@ -48,4 +48,15 @@ export const getAllBooks = async () => {
   return await db.getAllAsync("SELECT * FROM books ORDER BY created_at DESC");
 };
 
+
+export const addBook = async (title, author) => {
+  const createdAt = Date.now();
+
+  await db.runAsync(
+    `INSERT INTO books (title, author, status, created_at)
+     VALUES (?, ?, 'planning', ?)`,
+    [title, author, createdAt]
+  );
+};
+
 export const getDb = () => db;
