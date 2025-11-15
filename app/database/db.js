@@ -2,64 +2,50 @@ import { openDatabaseSync } from "expo-sqlite";
 
 const db = openDatabaseSync("book.db");
 
-export const initDB = () => {
-  db.transaction((tx) => {
-    // Tạo bảng
-    tx.executeSql(
-      `CREATE TABLE IF NOT EXISTS books (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
-        author TEXT,
-        status TEXT DEFAULT 'planning',
-        created_at INTEGER
-      );`
+// ---------------------
+// TẠO BẢNG
+// ---------------------
+export const initDB = async () => {
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS books (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      author TEXT,
+      status TEXT DEFAULT 'planning',
+      created_at INTEGER
     );
-  });
+  `);
 
-  // Seed dữ liệu
-  seedSampleData();
+  await seedSampleData();
 };
 
-// -------------------------
-// SEED SAMPLE DATA
-// -------------------------
-const seedSampleData = () => {
-  db.transaction((tx) => {
-    // Kiểm tra bảng có dữ liệu chưa
-    tx.executeSql(
-      "SELECT COUNT(*) as count FROM books",
-      [],
-      (_, result) => {
-        const count = result.rows[0].count;
+// ---------------------
+// SEED DATA (KHÔNG transaction)
+// ---------------------
+const seedSampleData = async () => {
+  const rows = await db.getAllAsync("SELECT COUNT(*) as count FROM books");
+  const count = rows[0].count;
 
-        if (count === 0) {
-          console.log("Seeding sample books...");
+  if (count === 0) {
+    console.log("Seeding sample data...");
 
-          tx.executeSql(
-            `INSERT INTO books (title, author, status, created_at)
-             VALUES (?, ?, ?, ?);`,
-            ["Clean Code", "Robert C. Martin", "planning", Date.now()]
-          );
+    await db.execAsync(`
+      INSERT INTO books (title, author, status, created_at)
+      VALUES ('Clean Code', 'Robert C. Martin', 'planning', ${Date.now()});
+    `);
 
-          tx.executeSql(
-            `INSERT INTO books (title, author, status, created_at)
-             VALUES (?, ?, ?, ?);`,
-            ["Atomic Habits", "James Clear", "reading", Date.now()]
-          );
+    await db.execAsync(`
+      INSERT INTO books (title, author, status, created_at)
+      VALUES ('Atomic Habits', 'James Clear', 'reading', ${Date.now()});
+    `);
+  }
+};
 
-          tx.executeSql(
-            `INSERT INTO books (title, author, status, created_at)
-             VALUES (?, ?, ?, ?);`,
-            ["The Pragmatic Programmer", "Andrew Hunt", "planning", Date.now()]
-          );
-
-          console.log("Seed OK!");
-        } else {
-          console.log("Books already seeded — skip.");
-        }
-      }
-    );
-  });
+// ---------------------
+// HÀM LẤY TẤT CẢ SÁCH
+// ---------------------
+export const getAllBooks = async () => {
+  return await db.getAllAsync("SELECT * FROM books ORDER BY created_at DESC");
 };
 
 export const getDb = () => db;
