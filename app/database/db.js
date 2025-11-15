@@ -81,4 +81,12 @@ export const deleteBook = async (id) => {
   await db.runAsync(`DELETE FROM books WHERE id = ?`, [id]);
 };
 
+export const findBookByTitle = async (title) => {
+  const rows = await db.getAllAsync(
+    "SELECT * FROM books WHERE LOWER(title) = LOWER(?)",
+    [title]
+  );
+  return rows.length > 0;
+};
+
 export const getDb = () => db;

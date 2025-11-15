@@ -13,6 +13,7 @@ import {
 import {
   addBook,
   deleteBook,
+  findBookByTitle,
   getAllBooks,
   initDB,
   updateBook,
@@ -25,22 +26,22 @@ export default function Index() {
   const [searchText, setSearchText] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
-  // Modal Add
-  const [addModalVisible, setAddModalVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [importError, setImportError] = useState("");
 
-  // Modal Edit
+  const [addModalVisible, setAddModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
+
   const [editingBook, setEditingBook] = useState(null);
 
-  // Form inputs
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
   const [status, setStatus] = useState("planning");
   const [error, setError] = useState("");
 
-  // -------------------------------
-  // Load database + data
-  // -------------------------------
+  // ------------------------------------
+  // LOAD DATA
+  // ------------------------------------
   useEffect(() => {
     const setup = async () => {
       await initDB();
@@ -54,9 +55,9 @@ export default function Index() {
     setBooks(data);
   };
 
-  // -------------------------------
-  // Cycle status (Câu 5)
-  // -------------------------------
+  // ------------------------------------
+  // CYCLE STATUS
+  // ------------------------------------
   const cycleStatus = async (book) => {
     let next = "planning";
     if (book.status === "planning") next = "reading";
@@ -67,9 +68,9 @@ export default function Index() {
     await loadBooks();
   };
 
-  // -------------------------------
-  // Add Book (Câu 4)
-  // -------------------------------
+  // ------------------------------------
+  // ADD BOOK
+  // ------------------------------------
   const handleAdd = async () => {
     if (!title.trim()) {
       setError("Tiêu đề không được để trống");
@@ -86,9 +87,9 @@ export default function Index() {
     await loadBooks();
   };
 
-  // -------------------------------
-  // Edit Book (Câu 6)
-  // -------------------------------
+  // ------------------------------------
+  // EDIT BOOK
+  // ------------------------------------
   const openEdit = (book) => {
     setEditingBook(book);
     setTitle(book.title);
@@ -97,7 +98,23 @@ export default function Index() {
     setEditModalVisible(true);
   };
 
+  const handleUpdate = async () => {
+    if (!title.trim()) {
+      setError("Tiêu đề không được để trống");
+      return;
+    }
 
+    await updateBook(editingBook.id, title, author, status);
+
+    setEditModalVisible(false);
+    setError("");
+
+    await loadBooks();
+  };
+
+  // ------------------------------------
+  // DELETE BOOK
+  // ------------------------------------
   const confirmDelete = (book) => {
     Alert.alert(
       "Xóa sách",
@@ -116,21 +133,9 @@ export default function Index() {
     );
   };
 
-  const handleUpdate = async () => {
-    if (!title.trim()) {
-      setError("Tiêu đề không được để trống");
-      return;
-    }
-
-    await updateBook(editingBook.id, title, author, status);
-
-    setEditModalVisible(false);
-    setError("");
-
-    await loadBooks();
-  };
-
-
+  // ------------------------------------
+  // SEARCH + FILTER
+  // ------------------------------------
   const filteredBooks = useMemo(() => {
     return books.filter((book) => {
       const matchSearch = book.title.toLowerCase().includes(searchText.toLowerCase());
@@ -142,30 +147,76 @@ export default function Index() {
     });
   }, [books, searchText, statusFilter]);
 
+  // ------------------------------------
+  // IMPORT API
+  // ------------------------------------
+  const importFromAPI = async () => {
+    try {
+      setLoading(true);
+      setImportError("");
+
+      const res = await fetch("https://gutendex.com/books/");
+      const json = await res.json();
+
+      // Chuẩn: map title + author
+      const data = json.results.map((item) => ({
+        title: item.title,
+        author: item.authors?.[0]?.name || "Unknown",
+        status: "planning",
+      }));
+
+      // merge tránh trùng title
+      for (const book of data) {
+        const exists = await findBookByTitle(book.title);
+        if (!exists) {
+          await addBook(book.title, book.author);
+        }
+      }
+
+      await loadBooks();
+    } catch (err) {
+      setImportError("Lỗi khi nhập dữ liệu từ API.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ------------------------------------
+  // UI
+  // ------------------------------------
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.headerRow}>
         <Text style={styles.header}>Danh sách sách</Text>
 
-        <TouchableOpacity
-          style={styles.addBtn}
-          onPress={() => setAddModalVisible(true)}
-        >
-          <Text style={styles.addBtnText}>+</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: "row", gap: 10 }}>
+
+
+          <TouchableOpacity
+            style={styles.addBtn}
+            onPress={() => setAddModalVisible(true)}
+          >
+            <Text style={styles.addBtnText}>+</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.importBtn} onPress={importFromAPI}>
+            <Text style={styles.importBtnText}>Import</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-
-      {/* Search box */}
+      {/* Search */}
       <TextInput
         placeholder="Tìm kiếm theo tiêu đề..."
         value={searchText}
         onChangeText={setSearchText}
         style={styles.searchInput}
       />
+      {loading && <Text style={styles.loadingText}>Đang nhập dữ liệu...</Text>}
+      {importError !== "" && <Text style={styles.errorText}>{importError}</Text>}
 
-      {/* Filter tabs */}
+      {/* Filter */}
       <View style={styles.filterRow}>
         {["all", "planning", "reading", "done"].map((s) => (
           <TouchableOpacity
@@ -188,7 +239,7 @@ export default function Index() {
         ))}
       </View>
 
-      {/* FlatList */}
+      {/* LIST */}
       <FlatList
         data={filteredBooks}
         keyExtractor={(item) => item.id.toString()}
@@ -207,9 +258,25 @@ export default function Index() {
           >
             <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
               <View>
-                <Text style={styles.title}>{item.title}</Text>
-                <Text style={styles.author}>{item.author || "Unknown"}</Text>
-                <Text style={styles.status}>Status: {item.status}</Text>
+                <View style={{ flex: 1, paddingRight: 20 }}>
+                  <Text
+                    style={styles.title}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
+                    {item.title}
+                  </Text>
+
+                  <Text
+                    style={styles.author}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
+                    {item.author || "Unknown"}
+                  </Text>
+
+                  <Text style={styles.status}>Status: {item.status}</Text>
+                </View>
               </View>
 
               <View style={{ flexDirection: "row", gap: 12 }}>
@@ -226,9 +293,7 @@ export default function Index() {
         )}
       />
 
-      {/* ----------------------------- */}
-      {/* ADD BOOK MODAL               */}
-      {/* ----------------------------- */}
+      {/* ADD MODAL */}
       <Modal visible={addModalVisible} animationType="slide" transparent>
         <View style={styles.modalWrapper}>
           <View style={styles.modalContent}>
@@ -269,9 +334,7 @@ export default function Index() {
         </View>
       </Modal>
 
-      {/* ----------------------------- */}
-      {/* EDIT BOOK MODAL              */}
-      {/* ----------------------------- */}
+      {/* EDIT MODAL */}
       <Modal visible={editModalVisible} animationType="slide" transparent>
         <View style={styles.modalWrapper}>
           <View style={styles.modalContent}>
@@ -330,13 +393,16 @@ export default function Index() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, paddingTop: 40, paddingHorizontal: 20 },
+
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 20,
   },
+
   header: { fontSize: 22, fontWeight: "600" },
+
   addBtn: {
     backgroundColor: "#2196f3",
     width: 40,
@@ -345,16 +411,86 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+
   addBtnText: { fontSize: 26, color: "#fff", marginTop: -4 },
+
+  importBtn: {
+    backgroundColor: "#8BC34A",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+
+  importBtnText: {
+    color: "#fff",
+    fontWeight: "700",
+  },
+
+  loadingText: {
+    color: "#1976d2",
+    marginBottom: 6,
+  },
+
+  errorText: {
+    color: "red",
+    marginBottom: 6,
+  },
+
   item: {
     padding: 15,
     marginBottom: 12,
     borderRadius: 10,
   },
+
   title: { fontSize: 18, fontWeight: "700" },
   author: { fontSize: 16, color: "#444" },
   status: { fontSize: 14, marginTop: 4 },
-  editBtn: { color: "#0277bd", fontWeight: "600", fontSize: 16 },
+
+  editBtn: {
+    color: "#0277bd",
+    fontWeight: "600",
+    fontSize: 16,
+  },
+
+  deleteBtn: {
+    color: "#d32f2f",
+    fontWeight: "700",
+    fontSize: 16,
+  },
+
+  searchInput: {
+    backgroundColor: "#f1f1f1",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+
+  filterRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+
+  filterBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    backgroundColor: "#e0e0e0",
+  },
+
+  filterBtnActive: {
+    backgroundColor: "#2196f3",
+  },
+
+  filterText: {
+    color: "#333",
+    fontWeight: "600",
+    fontSize: 12,
+  },
+
+  filterTextActive: {
+    color: "#fff",
+  },
 
   modalWrapper: {
     flex: 1,
@@ -362,70 +498,45 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.5)",
     paddingHorizontal: 20,
   },
+
   modalContent: {
     backgroundColor: "#fff",
     padding: 20,
     borderRadius: 12,
   },
+
   modalTitle: { fontSize: 20, fontWeight: "700", marginBottom: 12 },
+
   input: {
     backgroundColor: "#f2f2f2",
     padding: 12,
     borderRadius: 8,
     marginBottom: 10,
   },
+
   picker: {
     backgroundColor: "#f2f2f2",
     marginTop: 5,
   },
-  deleteBtn: {
-    color: "#d32f2f",
-    fontWeight: "700",
-    fontSize: 16,
-  },
+
   error: { color: "red", marginBottom: 10 },
-  modalButtons: { flexDirection: "row", justifyContent: "space-between", marginTop: 20 },
+
+  modalButtons: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 20,
+  },
+
   btn: {
     flex: 1,
     padding: 12,
     borderRadius: 8,
     marginHorizontal: 5,
   },
-  btnText: { color: "#fff", textAlign: "center", fontWeight: "600" },
 
-
-  searchInput: {
-  backgroundColor: "#f1f1f1",
-  padding: 12,
-  borderRadius: 8,
-  marginBottom: 10,
-},
-
-filterRow: {
-  flexDirection: "row",
-  justifyContent: "space-between",
-  marginBottom: 12,
-},
-
-filterBtn: {
-  paddingVertical: 6,
-  paddingHorizontal: 10,
-  borderRadius: 6,
-  backgroundColor: "#e0e0e0",
-},
-
-filterBtnActive: {
-  backgroundColor: "#2196f3",
-},
-
-filterText: {
-  color: "#333",
-  fontWeight: "600",
-  fontSize: 12,
-},
-
-filterTextActive: {
-  color: "#fff",
-},
-
+  btnText: {
+    color: "#fff",
+    textAlign: "center",
+    fontWeight: "600",
+  },
 });
