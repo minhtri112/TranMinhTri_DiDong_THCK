@@ -1,101 +1,91 @@
 import { Picker } from "@react-native-picker/picker";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Alert,
-  FlatList,
   Modal,
+  RefreshControl,
+  SectionList,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
-import {
-  addBook,
-  deleteBook,
-  findBookByTitle,
-  getAllBooks,
-  initDB,
-  updateBook,
-  updateBookStatus
-} from "./database/db";
+import { useBooks } from "./hooks/useBooks";
 
 export default function Index() {
-  const [books, setBooks] = useState([]);
+  // Custom hook
+  const {
+    books,
+    loading,
+    importError,
+    insertBook,
+    editBook,
+    removeBook,
+    cycleStatus,
+    importFromAPI,
+    loadBooks,
+  } = useBooks();
 
   const [searchText, setSearchText] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
-  const [loading, setLoading] = useState(false);
-  const [importError, setImportError] = useState("");
+  const [addVisible, setAddVisible] = useState(false);
+  const [editVisible, setEditVisible] = useState(false);
 
-  const [addModalVisible, setAddModalVisible] = useState(false);
-  const [editModalVisible, setEditModalVisible] = useState(false);
-
-  const [editingBook, setEditingBook] = useState(null);
+  const [editing, setEditing] = useState(null);
 
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
   const [status, setStatus] = useState("planning");
   const [error, setError] = useState("");
 
-  // ------------------------------------
-  // LOAD DATA
-  // ------------------------------------
-  useEffect(() => {
-    const setup = async () => {
-      await initDB();
-      await loadBooks();
-    };
-    setup();
-  }, []);
+  // -----------------------------
+  // FILTER + SEARCH
+  // -----------------------------
+  const filteredBooks = useMemo(() => {
+    return books.filter((b) => {
+      const matchText = b.title.toLowerCase().includes(searchText.toLowerCase());
+      const matchStatus = statusFilter === "all" ? true : b.status === statusFilter;
+      return matchText && matchStatus;
+    });
+  }, [books, searchText, statusFilter]);
 
-  const loadBooks = async () => {
-    const data = await getAllBooks();
-    setBooks(data);
-  };
+  // -----------------------------
+  // GROUP by status (SectionList)
+  // -----------------------------
+  const grouped = useMemo(() => {
+    return [
+      { title: "Planning", data: filteredBooks.filter((b) => b.status === "planning") },
+      { title: "Reading", data: filteredBooks.filter((b) => b.status === "reading") },
+      { title: "Done", data: filteredBooks.filter((b) => b.status === "done") },
+    ].filter((s) => s.data.length > 0);
+  }, [filteredBooks]);
 
-  // ------------------------------------
-  // CYCLE STATUS
-  // ------------------------------------
-  const cycleStatus = async (book) => {
-    let next = "planning";
-    if (book.status === "planning") next = "reading";
-    else if (book.status === "reading") next = "done";
-    else if (book.status === "done") next = "planning";
-
-    await updateBookStatus(book.id, next);
-    await loadBooks();
-  };
-
-  // ------------------------------------
-  // ADD BOOK
-  // ------------------------------------
+  // -----------------------------
+  // Add book
+  // -----------------------------
   const handleAdd = async () => {
     if (!title.trim()) {
       setError("Tiêu đề không được để trống");
       return;
     }
-
-    await addBook(title, author);
-    setAddModalVisible(false);
-
+    await insertBook(title, author);
+    setAddVisible(false);
     setTitle("");
     setAuthor("");
     setError("");
-
-    await loadBooks();
   };
 
-  // ------------------------------------
-  // EDIT BOOK
-  // ------------------------------------
+  // -----------------------------
+  // Edit book
+  // -----------------------------
   const openEdit = (book) => {
-    setEditingBook(book);
+    setEditing(book);
     setTitle(book.title);
     setAuthor(book.author);
     setStatus(book.status);
-    setEditModalVisible(true);
+    setEditVisible(true);
   };
 
   const handleUpdate = async () => {
@@ -103,18 +93,14 @@ export default function Index() {
       setError("Tiêu đề không được để trống");
       return;
     }
-
-    await updateBook(editingBook.id, title, author, status);
-
-    setEditModalVisible(false);
+    await editBook(editing.id, title, author, status);
+    setEditVisible(false);
     setError("");
-
-    await loadBooks();
   };
 
-  // ------------------------------------
-  // DELETE BOOK
-  // ------------------------------------
+  // -----------------------------
+  // Delete confirm
+  // -----------------------------
   const confirmDelete = (book) => {
     Alert.alert(
       "Xóa sách",
@@ -124,84 +110,25 @@ export default function Index() {
         {
           text: "Xóa",
           style: "destructive",
-          onPress: async () => {
-            await deleteBook(book.id);
-            await loadBooks();
-          },
+          onPress: () => removeBook(book.id),
         },
       ]
     );
   };
 
-  // ------------------------------------
-  // SEARCH + FILTER
-  // ------------------------------------
-  const filteredBooks = useMemo(() => {
-    return books.filter((book) => {
-      const matchSearch = book.title.toLowerCase().includes(searchText.toLowerCase());
-
-      const matchStatus =
-        statusFilter === "all" ? true : book.status === statusFilter;
-
-      return matchSearch && matchStatus;
-    });
-  }, [books, searchText, statusFilter]);
-
-  // ------------------------------------
-  // IMPORT API
-  // ------------------------------------
-  const importFromAPI = async () => {
-    try {
-      setLoading(true);
-      setImportError("");
-
-      const res = await fetch("https://gutendex.com/books/");
-      const json = await res.json();
-
-      // Chuẩn: map title + author
-      const data = json.results.map((item) => ({
-        title: item.title,
-        author: item.authors?.[0]?.name || "Unknown",
-        status: "planning",
-      }));
-
-      // merge tránh trùng title
-      for (const book of data) {
-        const exists = await findBookByTitle(book.title);
-        if (!exists) {
-          await addBook(book.title, book.author);
-        }
-      }
-
-      await loadBooks();
-    } catch (err) {
-      setImportError("Lỗi khi nhập dữ liệu từ API.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ------------------------------------
-  // UI
-  // ------------------------------------
   return (
     <View style={styles.container}>
-      {/* Header */}
+      {/* HEADER */}
       <View style={styles.headerRow}>
         <Text style={styles.header}>Danh sách sách</Text>
 
         <View style={{ flexDirection: "row", gap: 10 }}>
-
-
-          <TouchableOpacity
-            style={styles.addBtn}
-            onPress={() => setAddModalVisible(true)}
-          >
-            <Text style={styles.addBtnText}>+</Text>
-          </TouchableOpacity>
-
           <TouchableOpacity style={styles.importBtn} onPress={importFromAPI}>
             <Text style={styles.importBtnText}>Import</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.addBtn} onPress={() => setAddVisible(true)}>
+            <Text style={styles.addBtnText}>+</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -213,10 +140,8 @@ export default function Index() {
         onChangeText={setSearchText}
         style={styles.searchInput}
       />
-      {loading && <Text style={styles.loadingText}>Đang nhập dữ liệu...</Text>}
-      {importError !== "" && <Text style={styles.errorText}>{importError}</Text>}
 
-      {/* Filter */}
+      {/* Status Filter */}
       <View style={styles.filterRow}>
         {["all", "planning", "reading", "done"].map((s) => (
           <TouchableOpacity
@@ -224,13 +149,13 @@ export default function Index() {
             onPress={() => setStatusFilter(s)}
             style={[
               styles.filterBtn,
-              statusFilter === s ? styles.filterBtnActive : null,
+              statusFilter === s && styles.filterBtnActive,
             ]}
           >
             <Text
               style={[
                 styles.filterText,
-                statusFilter === s ? styles.filterTextActive : null,
+                statusFilter === s && styles.filterTextActive,
               ]}
             >
               {s.toUpperCase()}
@@ -239,44 +164,43 @@ export default function Index() {
         ))}
       </View>
 
-      {/* LIST */}
-      <FlatList
-        data={filteredBooks}
-        keyExtractor={(item) => item.id.toString()}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            onLongPress={() => openEdit(item)}
-            onPress={() => cycleStatus(item)}
-            style={[
-              styles.item,
-              item.status === "planning"
-                ? { backgroundColor: "#e3f2fd" }
-                : item.status === "reading"
-                  ? { backgroundColor: "#fff3e0" }
-                  : { backgroundColor: "#e8f5e9" },
-            ]}
-          >
-            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-              <View>
-                <View style={{ flex: 1, paddingRight: 20 }}>
-                  <Text
-                    style={styles.title}
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                  >
-                    {item.title}
-                  </Text>
+      {loading && <Text style={styles.loadingText}>Đang nhập dữ liệu...</Text>}
+      {importError !== "" && <Text style={styles.errorText}>{importError}</Text>}
 
-                  <Text
-                    style={styles.author}
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                  >
-                    {item.author || "Unknown"}
-                  </Text>
-
-                  <Text style={styles.status}>Status: {item.status}</Text>
-                </View>
+      {/* EMPTY STATE */}
+      {grouped.length === 0 ? (
+        <View style={styles.emptyWrapper}>
+          <Text style={styles.emptyText}>Chưa có sách nào.</Text>
+        </View>
+      ) : (
+        <SectionList
+          sections={grouped}
+          keyExtractor={(item) => item.id.toString()}
+          refreshControl={
+            <RefreshControl refreshing={loading} onRefresh={loadBooks} />
+          }
+          renderSectionHeader={({ section }) => (
+            <Text style={styles.sectionHeader}>{section.title}</Text>
+          )}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              onPress={() => cycleStatus(item)}
+              onLongPress={() => openEdit(item)}
+              style={[
+                styles.item,
+                item.status === "planning"
+                  ? { backgroundColor: "#e3f2fd" }
+                  : item.status === "reading"
+                    ? { backgroundColor: "#fff3e0" }
+                    : { backgroundColor: "#e8f5e9" },
+              ]}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={styles.title} numberOfLines={1} ellipsizeMode="tail">
+                  {item.title}
+                </Text>
+                <Text style={styles.author}>{item.author}</Text>
+                <Text>Status: {item.status}</Text>
               </View>
 
               <View style={{ flexDirection: "row", gap: 12 }}>
@@ -288,19 +212,19 @@ export default function Index() {
                   <Text style={styles.deleteBtn}>Xóa</Text>
                 </TouchableOpacity>
               </View>
-            </View>
-          </TouchableOpacity>
-        )}
-      />
+            </TouchableOpacity>
+          )}
+        />
+      )}
 
       {/* ADD MODAL */}
-      <Modal visible={addModalVisible} animationType="slide" transparent>
+      <Modal visible={addVisible} animationType="slide" transparent>
         <View style={styles.modalWrapper}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Thêm sách mới</Text>
 
             <TextInput
-              placeholder="Tiêu đề sách *"
+              placeholder="Tiêu đề sách"
               value={title}
               onChangeText={setTitle}
               style={styles.input}
@@ -317,7 +241,7 @@ export default function Index() {
 
             <View style={styles.modalButtons}>
               <TouchableOpacity
-                onPress={() => setAddModalVisible(false)}
+                onPress={() => setAddVisible(false)}
                 style={[styles.btn, { backgroundColor: "#aaa" }]}
               >
                 <Text style={styles.btnText}>Hủy</Text>
@@ -335,13 +259,13 @@ export default function Index() {
       </Modal>
 
       {/* EDIT MODAL */}
-      <Modal visible={editModalVisible} animationType="slide" transparent>
+      <Modal visible={editVisible} animationType="slide" transparent>
         <View style={styles.modalWrapper}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Chỉnh sửa sách</Text>
 
             <TextInput
-              placeholder="Tiêu đề sách *"
+              placeholder="Tiêu đề sách"
               value={title}
               onChangeText={setTitle}
               style={styles.input}
@@ -354,7 +278,7 @@ export default function Index() {
               style={styles.input}
             />
 
-            <Text style={{ marginTop: 10 }}>Trạng thái</Text>
+            <Text>Trạng thái</Text>
             <Picker
               selectedValue={status}
               onValueChange={(v) => setStatus(v)}
@@ -369,7 +293,7 @@ export default function Index() {
 
             <View style={styles.modalButtons}>
               <TouchableOpacity
-                onPress={() => setEditModalVisible(false)}
+                onPress={() => setEditVisible(false)}
                 style={[styles.btn, { backgroundColor: "#aaa" }]}
               >
                 <Text style={styles.btnText}>Hủy</Text>
@@ -389,7 +313,7 @@ export default function Index() {
   );
 }
 
-/* ------------------ STYLES ------------------ */
+/* ===================== STYLES ===================== */
 
 const styles = StyleSheet.create({
   container: { flex: 1, paddingTop: 40, paddingHorizontal: 20 },
@@ -400,7 +324,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 20,
   },
-
   header: { fontSize: 22, fontWeight: "600" },
 
   addBtn: {
@@ -411,8 +334,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-
-  addBtnText: { fontSize: 26, color: "#fff", marginTop: -4 },
+  addBtnText: { color: "#fff", fontSize: 26, marginTop: -4 },
 
   importBtn: {
     backgroundColor: "#8BC34A",
@@ -420,100 +342,86 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 8,
   },
-
   importBtnText: {
     color: "#fff",
     fontWeight: "700",
   },
 
-  loadingText: {
-    color: "#1976d2",
-    marginBottom: 6,
-  },
-
-  errorText: {
-    color: "red",
-    marginBottom: 6,
-  },
-
-  item: {
-    padding: 15,
-    marginBottom: 12,
-    borderRadius: 10,
-  },
-
-  title: { fontSize: 18, fontWeight: "700" },
-  author: { fontSize: 16, color: "#444" },
-  status: { fontSize: 14, marginTop: 4 },
-
-  editBtn: {
-    color: "#0277bd",
-    fontWeight: "600",
-    fontSize: 16,
-  },
-
-  deleteBtn: {
-    color: "#d32f2f",
-    fontWeight: "700",
-    fontSize: 16,
-  },
-
   searchInput: {
-    backgroundColor: "#f1f1f1",
+    backgroundColor: "#f0f0f0",
     padding: 12,
     borderRadius: 8,
     marginBottom: 10,
   },
-
   filterRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: 12,
   },
-
   filterBtn: {
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 6,
-    backgroundColor: "#e0e0e0",
+    backgroundColor: "#ddd",
   },
-
   filterBtnActive: {
     backgroundColor: "#2196f3",
   },
+  filterText: { color: "#333", fontWeight: "600", fontSize: 12 },
+  filterTextActive: { color: "#fff" },
 
-  filterText: {
-    color: "#333",
-    fontWeight: "600",
-    fontSize: 12,
+  sectionHeader: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginTop: 20,
+    marginBottom: 6,
   },
 
-  filterTextActive: {
-    color: "#fff",
+  item: {
+    flexDirection: "row",
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 10,
+    alignItems: "center",
+  },
+
+  title: { fontSize: 18, fontWeight: "700", maxWidth: 200 },
+  author: { fontSize: 15, color: "#555", marginBottom: 4 },
+
+  editBtn: { color: "#0277bd", fontWeight: "600" },
+  deleteBtn: { color: "#d32f2f", fontWeight: "700" },
+
+  emptyWrapper: {
+    marginTop: 80,
+    alignItems: "center",
+  },
+  emptyText: {
+    fontSize: 18,
+    color: "#777",
   },
 
   modalWrapper: {
     flex: 1,
     justifyContent: "center",
     backgroundColor: "rgba(0,0,0,0.5)",
-    paddingHorizontal: 20,
+    padding: 20,
   },
-
   modalContent: {
     backgroundColor: "#fff",
-    padding: 20,
+    padding: 22,
     borderRadius: 12,
   },
-
-  modalTitle: { fontSize: 20, fontWeight: "700", marginBottom: 12 },
-
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    marginBottom: 12,
+  },
   input: {
     backgroundColor: "#f2f2f2",
     padding: 12,
     borderRadius: 8,
     marginBottom: 10,
   },
-
   picker: {
     backgroundColor: "#f2f2f2",
     marginTop: 5,
@@ -523,20 +431,13 @@ const styles = StyleSheet.create({
 
   modalButtons: {
     flexDirection: "row",
-    justifyContent: "space-between",
     marginTop: 20,
   },
-
   btn: {
     flex: 1,
     padding: 12,
     borderRadius: 8,
     marginHorizontal: 5,
   },
-
-  btnText: {
-    color: "#fff",
-    textAlign: "center",
-    fontWeight: "600",
-  },
+  btnText: { textAlign: "center", color: "#fff", fontWeight: "600" },
 });
