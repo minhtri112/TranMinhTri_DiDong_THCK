@@ -59,4 +59,13 @@ export const addBook = async (title, author) => {
   );
 };
 
+export const updateBookStatus = async (id, newStatus) => {
+  await db.runAsync(
+    `UPDATE books 
+     SET status = ? 
+     WHERE id = ?`,
+    [newStatus, id]
+  );
+};
+
 export const getDb = () => db;

@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { addBook, getAllBooks, initDB } from "./database/db";
+import { addBook, getAllBooks, initDB, updateBookStatus } from "./database/db";
 
 export default function Index() {
   const [books, setBooks] = useState([]);
@@ -47,6 +47,17 @@ export default function Index() {
     await loadBooks();
   };
 
+  const cycleStatus = async (book) => {
+    let nextStatus = "planning";
+
+    if (book.status === "planning") nextStatus = "reading";
+    else if (book.status === "reading") nextStatus = "done";
+    else if (book.status === "done") nextStatus = "planning";
+
+    await updateBookStatus(book.id, nextStatus);
+    await loadBooks();
+  };
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -70,11 +81,21 @@ export default function Index() {
           data={books}
           keyExtractor={(item) => item.id.toString()}
           renderItem={({ item }) => (
-            <View style={styles.item}>
+            <TouchableOpacity
+              onPress={() => cycleStatus(item)}
+              style={[
+                styles.item,
+                item.status === "planning"
+                  ? { backgroundColor: "#e3f2fd" } // xanh nhạt
+                  : item.status === "reading"
+                    ? { backgroundColor: "#fff3e0" } // cam nhạt
+                    : { backgroundColor: "#e8f5e9" }, // xanh lá nhạt (done)
+              ]}
+            >
               <Text style={styles.title}>{item.title}</Text>
               <Text style={styles.author}>{item.author || "Unknown"}</Text>
               <Text style={styles.status}>Status: {item.status}</Text>
-            </View>
+            </TouchableOpacity>
           )}
         />
       )}
