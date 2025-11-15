@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import { Picker } from "@react-native-picker/picker";
+import { useEffect, useState } from "react";
 import {
   FlatList,
   Modal,
@@ -8,15 +9,33 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { addBook, getAllBooks, initDB, updateBookStatus } from "./database/db";
+import {
+  addBook,
+  getAllBooks,
+  initDB,
+  updateBook,
+  updateBookStatus,
+} from "./database/db";
 
 export default function Index() {
   const [books, setBooks] = useState([]);
-  const [modalVisible, setModalVisible] = useState(false);
+
+  // Modal Add
+  const [addModalVisible, setAddModalVisible] = useState(false);
+
+  // Modal Edit
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editingBook, setEditingBook] = useState(null);
+
+  // Form inputs
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
+  const [status, setStatus] = useState("planning");
   const [error, setError] = useState("");
 
+  // -------------------------------
+  // Load database + data
+  // -------------------------------
   useEffect(() => {
     const setup = async () => {
       await initDB();
@@ -30,16 +49,31 @@ export default function Index() {
     setBooks(data);
   };
 
-  const handleSave = async () => {
+  // -------------------------------
+  // Cycle status (Câu 5)
+  // -------------------------------
+  const cycleStatus = async (book) => {
+    let next = "planning";
+    if (book.status === "planning") next = "reading";
+    else if (book.status === "reading") next = "done";
+    else if (book.status === "done") next = "planning";
+
+    await updateBookStatus(book.id, next);
+    await loadBooks();
+  };
+
+  // -------------------------------
+  // Add Book (Câu 4)
+  // -------------------------------
+  const handleAdd = async () => {
     if (!title.trim()) {
       setError("Tiêu đề không được để trống");
       return;
     }
 
     await addBook(title, author);
-    setModalVisible(false);
+    setAddModalVisible(false);
 
-    // Reset form
     setTitle("");
     setAuthor("");
     setError("");
@@ -47,14 +81,28 @@ export default function Index() {
     await loadBooks();
   };
 
-  const cycleStatus = async (book) => {
-    let nextStatus = "planning";
+  // -------------------------------
+  // Edit Book (Câu 6)
+  // -------------------------------
+  const openEdit = (book) => {
+    setEditingBook(book);
+    setTitle(book.title);
+    setAuthor(book.author);
+    setStatus(book.status);
+    setEditModalVisible(true);
+  };
 
-    if (book.status === "planning") nextStatus = "reading";
-    else if (book.status === "reading") nextStatus = "done";
-    else if (book.status === "done") nextStatus = "planning";
+  const handleUpdate = async () => {
+    if (!title.trim()) {
+      setError("Tiêu đề không được để trống");
+      return;
+    }
 
-    await updateBookStatus(book.id, nextStatus);
+    await updateBook(editingBook.id, title, author, status);
+
+    setEditModalVisible(false);
+    setError("");
+
     await loadBooks();
   };
 
@@ -64,44 +112,50 @@ export default function Index() {
       <View style={styles.headerRow}>
         <Text style={styles.header}>Danh sách sách</Text>
 
-        {/* Nút + */}
         <TouchableOpacity
           style={styles.addBtn}
-          onPress={() => setModalVisible(true)}
+          onPress={() => setAddModalVisible(true)}
         >
           <Text style={styles.addBtnText}>+</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Empty */}
-      {books.length === 0 ? (
-        <Text style={styles.emptyText}>Chưa có sách trong danh sách đọc.</Text>
-      ) : (
-        <FlatList
-          data={books}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              onPress={() => cycleStatus(item)}
-              style={[
-                styles.item,
-                item.status === "planning"
-                  ? { backgroundColor: "#e3f2fd" } // xanh nhạt
-                  : item.status === "reading"
-                    ? { backgroundColor: "#fff3e0" } // cam nhạt
-                    : { backgroundColor: "#e8f5e9" }, // xanh lá nhạt (done)
-              ]}
-            >
-              <Text style={styles.title}>{item.title}</Text>
-              <Text style={styles.author}>{item.author || "Unknown"}</Text>
-              <Text style={styles.status}>Status: {item.status}</Text>
-            </TouchableOpacity>
-          )}
-        />
-      )}
+      {/* FlatList */}
+      <FlatList
+        data={books}
+        keyExtractor={(item) => item.id.toString()}
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            onLongPress={() => openEdit(item)}
+            onPress={() => cycleStatus(item)}
+            style={[
+              styles.item,
+              item.status === "planning"
+                ? { backgroundColor: "#e3f2fd" }
+                : item.status === "reading"
+                ? { backgroundColor: "#fff3e0" }
+                : { backgroundColor: "#e8f5e9" },
+            ]}
+          >
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <View>
+                <Text style={styles.title}>{item.title}</Text>
+                <Text style={styles.author}>{item.author || "Unknown"}</Text>
+                <Text style={styles.status}>Status: {item.status}</Text>
+              </View>
 
-      {/* Modal thêm sách */}
-      <Modal visible={modalVisible} animationType="slide" transparent>
+              <TouchableOpacity onPress={() => openEdit(item)}>
+                <Text style={styles.editBtn}>Sửa</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        )}
+      />
+
+      {/* ----------------------------- */}
+      {/* ADD BOOK MODAL               */}
+      {/* ----------------------------- */}
+      <Modal visible={addModalVisible} animationType="slide" transparent>
         <View style={styles.modalWrapper}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Thêm sách mới</Text>
@@ -124,14 +178,68 @@ export default function Index() {
 
             <View style={styles.modalButtons}>
               <TouchableOpacity
-                onPress={() => setModalVisible(false)}
+                onPress={() => setAddModalVisible(false)}
                 style={[styles.btn, { backgroundColor: "#aaa" }]}
               >
                 <Text style={styles.btnText}>Hủy</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                onPress={handleSave}
+                onPress={handleAdd}
+                style={[styles.btn, { backgroundColor: "#4caf50" }]}
+              >
+                <Text style={styles.btnText}>Lưu</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ----------------------------- */}
+      {/* EDIT BOOK MODAL              */}
+      {/* ----------------------------- */}
+      <Modal visible={editModalVisible} animationType="slide" transparent>
+        <View style={styles.modalWrapper}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Chỉnh sửa sách</Text>
+
+            <TextInput
+              placeholder="Tiêu đề sách *"
+              value={title}
+              onChangeText={setTitle}
+              style={styles.input}
+            />
+
+            <TextInput
+              placeholder="Tác giả"
+              value={author}
+              onChangeText={setAuthor}
+              style={styles.input}
+            />
+
+            <Text style={{ marginTop: 10 }}>Trạng thái</Text>
+            <Picker
+              selectedValue={status}
+              onValueChange={(v) => setStatus(v)}
+              style={styles.picker}
+            >
+              <Picker.Item label="Planning" value="planning" />
+              <Picker.Item label="Reading" value="reading" />
+              <Picker.Item label="Done" value="done" />
+            </Picker>
+
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                onPress={() => setEditModalVisible(false)}
+                style={[styles.btn, { backgroundColor: "#aaa" }]}
+              >
+                <Text style={styles.btnText}>Hủy</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={handleUpdate}
                 style={[styles.btn, { backgroundColor: "#4caf50" }]}
               >
                 <Text style={styles.btnText}>Lưu</Text>
@@ -143,6 +251,8 @@ export default function Index() {
     </View>
   );
 }
+
+/* ------------------ STYLES ------------------ */
 
 const styles = StyleSheet.create({
   container: { flex: 1, paddingTop: 40, paddingHorizontal: 20 },
@@ -162,9 +272,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   addBtnText: { fontSize: 26, color: "#fff", marginTop: -4 },
-  emptyText: { textAlign: "center", marginTop: 40, color: "#777" },
   item: {
-    backgroundColor: "#eee",
     padding: 15,
     marginBottom: 12,
     borderRadius: 10,
@@ -172,8 +280,8 @@ const styles = StyleSheet.create({
   title: { fontSize: 18, fontWeight: "700" },
   author: { fontSize: 16, color: "#444" },
   status: { fontSize: 14, marginTop: 4 },
+  editBtn: { color: "#0277bd", fontWeight: "600", fontSize: 16 },
 
-  // Modal style
   modalWrapper: {
     flex: 1,
     justifyContent: "center",
@@ -192,8 +300,12 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 10,
   },
+  picker: {
+    backgroundColor: "#f2f2f2",
+    marginTop: 5,
+  },
   error: { color: "red", marginBottom: 10 },
-  modalButtons: { flexDirection: "row", justifyContent: "space-between" },
+  modalButtons: { flexDirection: "row", justifyContent: "space-between", marginTop : 20 },
   btn: {
     flex: 1,
     padding: 12,

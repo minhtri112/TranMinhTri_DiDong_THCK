@@ -68,4 +68,13 @@ export const updateBookStatus = async (id, newStatus) => {
   );
 };
 
+export const updateBook = async (id, title, author, status) => {
+  await db.runAsync(
+    `UPDATE books
+     SET title = ?, author = ?, status = ?
+     WHERE id = ?`,
+    [title, author, status, id]
+  );
+};
+
 export const getDb = () => db;
