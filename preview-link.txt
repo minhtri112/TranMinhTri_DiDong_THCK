@@ -1,0 +1,7 @@
+Reading List – EAS Preview Build
+
+Android Preview:
+https://expo.dev/accounts/minhtri1112/projects/TranMinhTri_22693981/builds/421fa328-33a6-4b7c-b54f-2ef4a038602f
+
+Generated via:
+eas build --platform android
