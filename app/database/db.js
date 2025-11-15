@@ -77,4 +77,8 @@ export const updateBook = async (id, title, author, status) => {
   );
 };
 
+export const deleteBook = async (id) => {
+  await db.runAsync(`DELETE FROM books WHERE id = ?`, [id]);
+};
+
 export const getDb = () => db;

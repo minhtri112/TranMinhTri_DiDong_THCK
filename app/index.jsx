@@ -1,20 +1,22 @@
 import { Picker } from "@react-native-picker/picker";
 import { useEffect, useState } from "react";
 import {
+  Alert,
   FlatList,
   Modal,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 import {
   addBook,
+  deleteBook,
   getAllBooks,
   initDB,
   updateBook,
-  updateBookStatus,
+  updateBookStatus
 } from "./database/db";
 
 export default function Index() {
@@ -92,6 +94,25 @@ export default function Index() {
     setEditModalVisible(true);
   };
 
+
+  const confirmDelete = (book) => {
+    Alert.alert(
+      "Xóa sách",
+      `Bạn có chắc muốn xóa "${book.title}"?`,
+      [
+        { text: "Hủy", style: "cancel" },
+        {
+          text: "Xóa",
+          style: "destructive",
+          onPress: async () => {
+            await deleteBook(book.id);
+            await loadBooks();
+          },
+        },
+      ]
+    );
+  };
+
   const handleUpdate = async () => {
     if (!title.trim()) {
       setError("Tiêu đề không được để trống");
@@ -133,8 +154,8 @@ export default function Index() {
               item.status === "planning"
                 ? { backgroundColor: "#e3f2fd" }
                 : item.status === "reading"
-                ? { backgroundColor: "#fff3e0" }
-                : { backgroundColor: "#e8f5e9" },
+                  ? { backgroundColor: "#fff3e0" }
+                  : { backgroundColor: "#e8f5e9" },
             ]}
           >
             <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
@@ -144,9 +165,15 @@ export default function Index() {
                 <Text style={styles.status}>Status: {item.status}</Text>
               </View>
 
-              <TouchableOpacity onPress={() => openEdit(item)}>
-                <Text style={styles.editBtn}>Sửa</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: "row", gap: 12 }}>
+                <TouchableOpacity onPress={() => openEdit(item)}>
+                  <Text style={styles.editBtn}>Sửa</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={() => confirmDelete(item)}>
+                  <Text style={styles.deleteBtn}>Xóa</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </TouchableOpacity>
         )}
@@ -304,8 +331,13 @@ const styles = StyleSheet.create({
     backgroundColor: "#f2f2f2",
     marginTop: 5,
   },
+  deleteBtn: {
+  color: "#d32f2f",
+  fontWeight: "700",
+  fontSize: 16,
+},
   error: { color: "red", marginBottom: 10 },
-  modalButtons: { flexDirection: "row", justifyContent: "space-between", marginTop : 20 },
+  modalButtons: { flexDirection: "row", justifyContent: "space-between", marginTop: 20 },
   btn: {
     flex: 1,
     padding: 12,
